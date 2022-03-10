@@ -24,6 +24,8 @@ Usage - formats:
                                          yolov5s_edgetpu.tflite     # TensorFlow Edge TPU
 """
 
+# 还是试试提交GitHub
+
 import argparse
 import os
 import sys
