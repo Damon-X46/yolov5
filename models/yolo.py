@@ -43,7 +43,7 @@ class Detect(nn.Module):
         self.grid = [torch.zeros(1)] * self.nl  # init grid
         self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv                   # 三个分辨率的都输出33个通道 33=anchor_num*(classes+5)
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
 
     def forward(self, x):
@@ -94,14 +94,14 @@ class Model(nn.Module):
 
         # Define model
         ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
-        if nc and nc != self.yaml['nc']:
+        if nc and nc != self.yaml['nc']:                                    # 统一数据定义跟网络定义(加载的预训练模型或yaml定义的网络)中的类别数量nc
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
-        if anchors:
+        if anchors:                                                         # 同上, 统一anchor
             LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
             self.yaml['anchors'] = round(anchors)  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
-        self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist    # self.save([4, 6, 10, 14, 17, 20, 23])    ##########################网络定义好了
+        self.names = [str(i) for i in range(self.yaml['nc'])]  # default names      # 类别编码成0, 1, 2, 3, 4, 5 ...
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
@@ -109,7 +109,8 @@ class Model(nn.Module):
         if isinstance(m, Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
+            # 这里使用(1, 3, 256, 256)的tensor先进行一次forward主要是计算m.stride, 返回的张量包括(3, 32, 32, 11), (3, 16, 16, 11), (3, 8, 8, 11)
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward ############################
             m.anchors /= m.stride.view(-1, 1, 1)
             check_anchor_order(m)
             self.stride = m.stride
@@ -242,25 +243,25 @@ class Model(nn.Module):
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
-    anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
+    anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']           # anchor:三行, 每行代表在不同特征图上, 比如第一行代表在最大的特征图上
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
+    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)       # nc:有可能是所有类别中的一个; 5:四个坐标一个score
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
-        for j, a in enumerate(args):
+        for j, a in enumerate(args):        # 这个循环就是赋值, 比如nc为6, anchors为yaml文件里面的那个。（这个要看最后Detect才好学），主要就是eval()的作用!!!
             try:
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
             except NameError:
                 pass
 
-        n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
+        n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain            # 设置depth_multiple, 网络选择不一样, 这里就不一样, 跟网络大小有关
         if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                  BottleneckCSP, C3, C3TR, C3SPP, C3Ghost]:
-            c1, c2 = ch[f], args[0]
+            c1, c2 = ch[f], args[0]                     # c1:输入通道; c2:输出通道
             if c2 != no:  # if not output
-                c2 = make_divisible(c2 * gw, 8)
+                c2 = make_divisible(c2 * gw, 8)         # 设置了输出通道的时候，还需要用yaml中的参数width_multiple进行计算操作。就是对设置的通道进行放大还是缩小
 
             args = [c1, c2, *args[1:]]
             if m in [BottleneckCSP, C3, C3TR, C3Ghost]:
@@ -271,7 +272,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         elif m is Detect:
-            args.append([ch[x] for x in f])
+            args.append([ch[x] for x in f])             # 把最后要取的那三个层的通道数读进去
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
         elif m is Contract:
@@ -281,16 +282,16 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         else:
             c2 = ch[f]
 
-        m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+        m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module          # 这里m是common.py中的类了, m(*args)就是把args全部当作参数传给m这个类初始化好了
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
-        layers.append(m_)
+        layers.append(m_)                           # 一层层构建网络了
         if i == 0:
             ch = []
-        ch.append(c2)
+        ch.append(c2)           # 会把每次输出的通道数都加到ch中去
     return nn.Sequential(*layers), sorted(save)
 
 
