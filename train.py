@@ -73,7 +73,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
 
-    # Directories
+    # Directories           # 创建训练的save_dir, 并设置last.pt和last.pt两个权重
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
     last, best = w / 'last.pt', w / 'best.pt'
@@ -82,14 +82,14 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
             hyp = yaml.safe_load(f)  # load hyps dict
-    LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
+    LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))      # 打印超参数
 
     # Save run settings
     if not evolve:
         with open(save_dir / 'hyp.yaml', 'w') as f:
-            yaml.safe_dump(hyp, f, sort_keys=False)         # 保存超参数
+            yaml.safe_dump(hyp, f, sort_keys=False)         # 保存超参数到输出文件
         with open(save_dir / 'opt.yaml', 'w') as f:
-            yaml.safe_dump(vars(opt), f, sort_keys=False)   # 保存参数设置(parser的)
+            yaml.safe_dump(vars(opt), f, sort_keys=False)   # 保存参数设置(parser的)到输出文件
 
     # Loggers
     data_dict = None
@@ -109,10 +109,10 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     cuda = device.type != 'cpu'
     init_seeds(1 + RANK)
     with torch_distributed_zero_first(LOCAL_RANK):
-        data_dict = data_dict or check_dataset(data)  # check if None
+        data_dict = data_dict or check_dataset(data)  # check if None       # 读取opt.data配置文件中的信息
     train_path, val_path = data_dict['train'], data_dict['val']
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
-    names = ['item'] if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
+    names = ['item'] if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names      # 获取所有类别的名称
     assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {data}'  # check
     is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
 
@@ -456,7 +456,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default=ROOT / 'yolov5n.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='/emwuser/znr/code/detection/yolov5/models/yolov5n.yaml', help='model.yaml path')
+    parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     # parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/my_data.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
@@ -502,12 +502,12 @@ def parse_opt(known=False):
 def main(opt, callbacks=Callbacks()):
     # Checks
     if RANK in [-1, 0]:
-        print_args(FILE.stem, opt)
+        print_args(FILE.stem, opt)              # 输出parse里面的参数
         check_git_status()
-        check_requirements(exclude=['thop'])
+        check_requirements(exclude=['thop'])    # 检查依赖包是否齐全
 
     # Resume
-    if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
+    if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run      # 重新训练被打断的
         ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         with open(Path(ckpt).parent.parent / 'opt.yaml', errors='ignore') as f:
@@ -515,17 +515,16 @@ def main(opt, callbacks=Callbacks()):
         opt.cfg, opt.weights, opt.resume = '', ckpt, True  # reinstate
         LOGGER.info(f'Resuming training from {ckpt}')
     else:
-        opt.data, opt.cfg, opt.hyp, opt.weights, opt.project = \
-            check_file(opt.data), check_yaml(opt.cfg), check_yaml(opt.hyp), str(opt.weights), str(opt.project)  # checks
-        assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
+        opt.data, opt.cfg, opt.hyp, opt.weights, opt.project = check_file(opt.data), check_yaml(opt.cfg), check_yaml(opt.hyp), str(opt.weights), str(opt.project)  # checks
+        assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'      # 需要有指定的cfg, 或者与训练模型. 其中一个参数才可以
         if opt.evolve:
             if opt.project == str(ROOT / 'runs/train'):  # if default project name, rename to runs/evolve
                 opt.project = str(ROOT / 'runs/evolve')
             opt.exist_ok, opt.resume = opt.resume, False  # pass resume to exist_ok and disable resume
-        opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
+        opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))     # 每次训练都会新建一个文件夹来存访本次训练产生的内容
 
     # DDP mode
-    device = select_device(opt.device, batch_size=opt.batch_size)
+    device = select_device(opt.device, batch_size=opt.batch_size)       # 设置选择的GPU, 并打印它们的信息(CUDA:0 (GeForce RTX 3090, 24268MiB)), 只返回cuda:0???
     if LOCAL_RANK != -1:
         msg = 'is not compatible with YOLOv5 Multi-GPU DDP training'
         assert not opt.image_weights, f'--image-weights {msg}'
@@ -539,7 +538,7 @@ def main(opt, callbacks=Callbacks()):
 
     # Train
     if not opt.evolve:
-        train(opt.hyp, opt, device, callbacks)
+        train(opt.hyp, opt, device, callbacks)              # 训练函数
         if WORLD_SIZE > 1 and RANK == 0:
             LOGGER.info('Destroying process group... ')
             dist.destroy_process_group()

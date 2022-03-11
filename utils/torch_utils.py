@@ -67,7 +67,7 @@ def select_device(device='', batch_size=0, newline=True):
         if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
             assert batch_size % n == 0, f'batch-size {batch_size} not multiple of GPU count {n}'
         space = ' ' * (len(s) + 1)
-        for i, d in enumerate(devices):
+        for i, d in enumerate(devices):                 # 打印出用到的GPU的信息, 如CUDA:0 (GeForce RTX 3090, 24268MiB)
             p = torch.cuda.get_device_properties(i)
             s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
     else:
@@ -76,7 +76,7 @@ def select_device(device='', batch_size=0, newline=True):
     if not newline:
         s = s.rstrip()
     LOGGER.info(s.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else s)  # emoji-safe
-    return torch.device('cuda:0' if cuda else 'cpu')
+    return torch.device('cuda:0' if cuda else 'cpu')            # 只返回cuda:0
 
 
 def time_sync():

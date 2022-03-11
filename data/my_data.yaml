@@ -7,8 +7,8 @@ test:  # test images (optional)
 
 # Classes
 nc: 6  # number of classes
-names: ['speed_unlimited', 'speed_limited', 'pedestrian_crossing', 
-        'yellow_back', 'red_stop', 'green_go']  # class names
+names: ['green_go', 'speed_unlimited', 'red_stop',
+        'yellow_back', 'speed_limited', 'pedestrian_crossing']  # class names
 
 
 # Download script/URL (optional)

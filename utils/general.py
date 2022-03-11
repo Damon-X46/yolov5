@@ -892,7 +892,7 @@ def increment_path(path, exist_ok=False, sep='', mkdir=False):
         dirs = glob.glob(f"{path}{sep}*")  # similar paths
         matches = [re.search(rf"%s{sep}(\d+)" % path.stem, d) for d in dirs]
         i = [int(m.groups()[0]) for m in matches if m]  # indices
-        n = max(i) + 1 if i else 2  # increment number
+        n = max(i) + 1 if i else 2  # increment number          # 每次训练都要检查一遍记录的文件的最大值，然后再建一个新的来记录这个训练
         path = Path(f"{path}{sep}{n}{suffix}")  # increment path
     if mkdir:
         path.mkdir(parents=True, exist_ok=True)  # make directory
