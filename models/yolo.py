@@ -38,20 +38,20 @@ class Detect(nn.Module):
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
-        self.nl = len(anchors)  # number of detection layers
+        self.nl = len(anchors)  # number of detection layers    # 一层delect layer张量, 对应一组anchor
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [torch.zeros(1)] * self.nl  # init grid
         self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv                   # 三个分辨率的都输出33个通道 33=anchor_num*(classes+5)
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv     # 三个分辨率的都输出33个通道 33=anchor_num*(classes+5)
         self.inplace = inplace  # use in-place ops (e.g. slice assignment)
 
-    def forward(self, x):
+    def forward(self, x):       # 这里的x是一个列表, x[0]:[1, 256, 32, 32]; x[1]:[1, 512, 16, 16]; x[2]:[1, 1024, 8, 8]
         z = []  # inference output
-        for i in range(self.nl):
-            x[i] = self.m[i](x[i])  # conv
+        for i in range(self.nl):    # 对每层要detect的层进行操作
+            x[i] = self.m[i](x[i])  # conv      # 每层都卷积层33通道(33=anchor_num*(classes+5))     # x[0]:[1, 33, 32, 32]; x[1]:[1, 33, 16, 16]; x[2]:[1, 33, 8, 8]
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
-            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()      # x[0]:[1, 3, 32, 32, 11]; x[1]:[1, 3, 16, 16, 11]; x[2]:[1, 3, 8, 8, 11]
 
             if not self.training:  # inference
                 if self.onnx_dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
@@ -81,7 +81,7 @@ class Detect(nn.Module):
         return grid, anchor_grid
 
 
-class Model(nn.Module):
+class Model(nn.Module):         # 注释用的都是yolov5l, x[1, 3, 256, 256]来举例
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
@@ -109,7 +109,7 @@ class Model(nn.Module):
         if isinstance(m, Detect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
-            # 这里使用(1, 3, 256, 256)的tensor先进行一次forward主要是计算m.stride, 返回的张量包括(3, 32, 32, 11), (3, 16, 16, 11), (3, 8, 8, 11)
+            # 这里使用[1, 3, 256, 256]的tensor先进行一次forward主要是计算m.stride, 返回x[0]:[1, 3, 32, 32, 11]; x[1]:[1, 3, 16, 16, 11]; x[2]:[1, 3, 8, 8, 11]
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward ############################
             m.anchors /= m.stride.view(-1, 1, 1)
             check_anchor_order(m)
@@ -141,17 +141,18 @@ class Model(nn.Module):
         return torch.cat(y, 1), None  # augmented inference, train
 
     def _forward_once(self, x, profile=False, visualize=False):
-        y, dt = [], []  # outputs
+        y, dt = [], []  # outputs       # 看yolov5的图, y就是要拿来concat的保存的中间层
         for m in self.model:
-            if m.f != -1:  # if not from previous layer
-                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+            if m.f != -1:  # if not from previous layer         # 大部分的模块都是直接对上一层(-1)输出进行操作，但是有个别模块是对指定层进行操作，这个if就是用来操作这个的
+                # (concat[-1,4]代表把上一层和第5层进行concat)(detect[17,20,23]代表把这三个层拿来进行detect操作)
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers    # 如concat, 把指定层拿出来赋给x
             if profile:
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
-        return x
+        return x        # x[0]:[1, 3, 32, 32, 11]; x[1]:[1, 3, 16, 16, 11]; x[2]:[1, 3, 8, 8, 11]
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
@@ -247,7 +248,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)       # nc:有可能是所有类别中的一个; 5:四个坐标一个score
 
-    layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out           # save就是把网络中要拿来concat的中间层保留下来(保留的是层号)
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):        # 这个循环就是赋值, 比如nc为6, anchors为yaml文件里面的那个。（这个要看最后Detect才好学），主要就是eval()的作用!!!
@@ -285,7 +286,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module          # 这里m是common.py中的类了, m(*args)就是把args全部当作参数传给m这个类初始化好了
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
-        m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
+        m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params     # m.i第几层; m.f:这个操作是对哪几层操作的(-1/[-1,4]/[17,20,23]); 
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)                           # 一层层构建网络了

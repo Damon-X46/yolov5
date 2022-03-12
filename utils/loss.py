@@ -220,3 +220,9 @@ class ComputeLoss:
             tcls.append(c)  # class
 
         return tcls, tbox, indices, anch
+        # tcls[0]:[216]; tcls[1]:[291]; tcls[2]:[98]
+        # tbox[0]:[216, 4]; tbox[1]:[291, 4]; tbox[2]:[98, 4]
+        # indices[0][0]:[216]; indices[0][1]:[216]; indices[0][2]:[216]; indices[0][3]:[216]; 
+        # indices[1][0]:[291]; indices[1][1]:[291]; indices[1][2]:[291]; indices[1][3]:[291]; 
+        # indices[2][0]:[98]; indices[2][1]:[98]; indices[2][2]:[98]; indices[2][3]:[98]
+        # anch[0]:[216, 2]; anch[1]:[291, 2]; anch[2]:[98, 2]

@@ -92,7 +92,7 @@ class TransformerBlock(nn.Module):
         return self.tr(p + self.linear(p)).permute(1, 2, 0).reshape(b, self.c2, w, h)
 
 
-class Bottleneck(nn.Module):
+class Bottleneck(nn.Module):        # 两次卷积之后, 再和输入(shortcut)相加(add)
     # Standard bottleneck
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
@@ -124,18 +124,18 @@ class BottleneckCSP(nn.Module):
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
 
 
-class C3(nn.Module):
+class C3(nn.Module):        # 一条过一个卷积加几个Bottleneck, 另一条过卷积, 然后两条concat. 注意Bottleneck的实现
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)               # 注意这三个的输入输出，这不是简单的串联在一起，是有操作的。具体要看前向传播(cv1跟cv2看着操作一样，但是只是结构一样而已, 因为两层反向传播的参数是不一样的)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
         self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
         # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
 
-    def forward(self, x):
+    def forward(self, x):       # 拿第一次c3来举例, x:[1, 128, 64, 64]; self.cv2(x)就是单独的卷积那条, self.m(self.cv1(x))就是卷积后再过n个Bottleneck
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
 
 
@@ -179,7 +179,7 @@ class SPP(nn.Module):
             return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
 
 
-class SPPF(nn.Module):
+class SPPF(nn.Module):          # 先进行一次卷积, 然后分四天路, 三条是不同大小的最大池化, 一条的shortcut, 最后再concat, 再卷积
     # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
     def __init__(self, c1, c2, k=5):  # equivalent to SPP(k=(5, 9, 13))
         super().__init__()
@@ -188,12 +188,12 @@ class SPPF(nn.Module):
         self.cv2 = Conv(c_ * 4, c2, 1, 1)
         self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
 
-    def forward(self, x):
-        x = self.cv1(x)
+    def forward(self, x):       # 拿第一次SPPF操作时候, x[1, 1024, 8, 8]举例
+        x = self.cv1(x)         # x[1, 512, 8, 8]
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')  # suppress torch 1.9.0 max_pool2d() warning
-            y1 = self.m(x)
-            y2 = self.m(y1)
+            y1 = self.m(x)                      # y1[1, 512, 8, 8]
+            y2 = self.m(y1)                     # y2[1, 512, 8, 8]          # 网络结构中三个池化核分别是5, 9, 13, 对y1再用一次核5的就相当于是对x进行核9的, 其实这里实现跟三个并行不太一样，是串行，再分别拿来concat
             return self.cv2(torch.cat([x, y1, y2, self.m(y2)], 1))
 
 
@@ -265,7 +265,7 @@ class Expand(nn.Module):
         return x.view(b, c // s ** 2, h * s, w * s)  # x(1,16,160,160)
 
 
-class Concat(nn.Module):
+class Concat(nn.Module):        # 传进来的x是一个列表, 里面装了要concat的tensor
     # Concatenate a list of tensors along dimension
     def __init__(self, dimension=1):
         super().__init__()

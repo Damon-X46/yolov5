@@ -415,13 +415,13 @@ class LoadImagesAndLabels(Dataset):
 
         # Check cache
         self.label_files = img2label_paths(self.im_files)  # labels
-        cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
+        cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')     # cache_path这里是label的路径.cache(看except的操作)
         try:
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
             assert cache['version'] == self.cache_version  # same version
             assert cache['hash'] == get_hash(self.label_files + self.im_files)  # same hash
         except Exception:
-            cache, exists = self.cache_labels(cache_path, prefix), False  # cache
+            cache, exists = self.cache_labels(cache_path, prefix), False  # cache                       # 第一次运行, 会把一些标签的信息保存到cache中, 方便下次读取
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop('results')  # found, missing, empty, corrupt, total
@@ -516,7 +516,7 @@ class LoadImagesAndLabels(Dataset):
                 ne += ne_f
                 nc += nc_f
                 if im_file:
-                    x[im_file] = [lb, shape, segments]
+                    x[im_file] = [lb, shape, segments]          # 标签、图像大小、[]
                 if msg:
                     msgs.append(msg)
                 pbar.desc = f"{desc}{nf} found, {nm} missing, {ne} empty, {nc} corrupt"
@@ -610,7 +610,7 @@ class LoadImagesAndLabels(Dataset):
             # labels = cutout(img, labels, p=0.5)
             # nl = len(labels)  # update after cutout
 
-        labels_out = torch.zeros((nl, 6))
+        labels_out = torch.zeros((nl, 6))               # 扩了一维, 为啥???
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -645,7 +645,7 @@ class LoadImagesAndLabels(Dataset):
         if not f.exists():
             np.save(f.as_posix(), cv2.imread(self.im_files[i]))
 
-    def load_mosaic(self, index):
+    def load_mosaic(self, index):       # 加载一张图像和随机三张图像, 将四张图像拼接成一张图进行训练!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
         labels4, segments4 = [], []
         s = self.img_size
@@ -656,7 +656,7 @@ class LoadImagesAndLabels(Dataset):
             # Load image
             img, _, (h, w) = self.load_image(index)
 
-            # place img in img4
+            # place img in img4         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             if i == 0:  # top left
                 img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
                 x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
@@ -684,7 +684,7 @@ class LoadImagesAndLabels(Dataset):
             segments4.extend(segments)
 
         # Concat/clip labels
-        labels4 = np.concatenate(labels4, 0)
+        labels4 = np.concatenate(labels4, 0)        # 把四张图拼成一张, 当然也要把四个图对应的标签放到一个标签中
         for x in (labels4[:, 1:], *segments4):
             np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
         # img4, labels4 = replicate(img4, labels4)  # replicate
