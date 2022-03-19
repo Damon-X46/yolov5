@@ -456,8 +456,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default=ROOT / 'yolov5l.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
+    parser.add_argument('--weights', type=str, default=ROOT / 'yolov5l.pt', help='initial weights path')    # 要用什么模型n,s,m,l,x
+    parser.add_argument('--cfg', type=str, default='', help='model.yaml path')                              # 配置文件
     # parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/SSDD.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
