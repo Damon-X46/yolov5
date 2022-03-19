@@ -242,7 +242,7 @@ class Model(nn.Module):         # 注释用的都是yolov5l, x[1, 3, 256, 256]�
         return self
 
 
-def parse_model(d, ch):  # model_dict, input_channels(3)
+def parse_model(d, ch):  # model_dict, input_channels(3)        d:模型的配置文件(yolov5l.yaml), ch:通道数
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']           # anchor:三行, 每行代表在不同特征图上, 比如第一行代表在最大的特征图上
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
